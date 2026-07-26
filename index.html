@@ -1,0 +1,681 @@
+\<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lilah — an album of places and days</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+  :root{
+    --paper:#E9E9E0;
+    --paper-2:#F5F5EF;
+    --ink:#1B2A26;
+    --ink-2:#54655D;
+    --line:#C8CCBE;
+    --teal:#14605D;
+    --teal-soft:#DCE7E4;
+    --ochre:#A87C2A;
+    --madder:#8C3B2F;
+    --r:4px;
+    --shadow:0 2px 10px rgba(27,42,38,.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Archivo',system-ui,sans-serif;
+    color:var(--ink);
+    background:var(--paper);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:inherit;color:inherit;cursor:pointer;}
+  :focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+
+  .stamp{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;color:var(--ink-2);}
+
+  /* ---------- shell ---------- */
+  #app{display:flex;flex-direction:column;height:100%;}
+
+  header{
+    display:flex;align-items:baseline;gap:12px;
+    padding:14px 18px 12px;
+    border-bottom:1px solid var(--line);
+    background:var(--paper-2);
+    position:relative;z-index:500;
+  }
+  h1{
+    font-family:'Fraunces',Georgia,serif;
+    font-optical-sizing:auto;
+    font-weight:600;font-size:26px;line-height:1;margin:0;
+    letter-spacing:-.01em;
+  }
+  #count{flex:1;}
+  #addBtn{
+    width:44px;height:44px;border-radius:50%;
+    border:1px solid var(--teal);background:var(--teal);color:var(--paper-2);
+    font-size:26px;line-height:1;display:grid;place-items:center;
+    box-shadow:var(--shadow);transition:transform .15s ease;
+    flex:none;
+  }
+  #addBtn:hover{transform:scale(1.06);}
+  #addBtn:active{transform:scale(.96);}
+
+  main{flex:1;position:relative;overflow:hidden;}
+  .view{position:absolute;inset:0;display:none;}
+  .view.on{display:block;}
+
+  /* ---------- bottom switcher ---------- */
+  #switcher{
+    position:absolute;left:50%;transform:translateX(-50%);
+    bottom:max(18px,env(safe-area-inset-bottom));
+    display:flex;gap:2px;padding:3px;
+    background:var(--paper-2);border:1px solid var(--line);
+    border-radius:999px;box-shadow:var(--shadow);z-index:600;
+  }
+  #switcher button{
+    border:0;background:transparent;border-radius:999px;
+    padding:9px 22px;font-size:14px;font-weight:500;color:var(--ink-2);
+    transition:background .18s ease,color .18s ease;
+  }
+  #switcher button[aria-selected="true"]{background:var(--teal);color:var(--paper-2);}
+
+  /* ---------- map ---------- */
+  #map{height:100%;background:var(--paper);}
+  .pin{background:none;border:0;}
+  .pin i{
+    display:block;width:46px;height:46px;border-radius:var(--r);
+    border:2px solid var(--paper-2);box-shadow:var(--shadow);
+    background-size:cover;background-position:center;
+    transition:transform .15s ease;
+  }
+  .pin:hover i{transform:scale(1.12);}
+  .pin b{
+    position:absolute;top:-6px;right:-6px;
+    background:var(--ochre);color:var(--paper-2);
+    font-family:'Space Mono',monospace;font-size:10px;font-weight:700;
+    border-radius:999px;padding:1px 5px;border:1.5px solid var(--paper-2);
+  }
+  .leaflet-container{font-family:'Archivo',sans-serif;}
+
+  #noloc{
+    position:absolute;left:18px;bottom:max(18px,env(safe-area-inset-bottom));
+    z-index:600;background:var(--paper-2);border:1px solid var(--line);
+    border-radius:999px;padding:8px 14px;font-size:12px;box-shadow:var(--shadow);
+    display:none;
+  }
+
+  /* ---------- calendar ---------- */
+  #calWrap{height:100%;overflow-y:auto;padding:16px 16px 96px;}
+  .calbar{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+  .calbar h2{
+    font-family:'Fraunces',serif;font-weight:400;font-size:22px;margin:0;flex:1;
+  }
+  .calbar button{
+    border:1px solid var(--line);background:var(--paper-2);
+    border-radius:var(--r);width:34px;height:34px;font-size:15px;
+  }
+  .calbar button:hover{border-color:var(--teal);color:var(--teal);}
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;}
+  .dow span{
+    font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;
+    color:var(--ink-2);text-align:center;text-transform:uppercase;
+  }
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .cell{
+    position:relative;aspect-ratio:1;border:1px solid var(--line);
+    border-radius:var(--r);background:var(--paper-2);
+    background-size:cover;background-position:center;
+    padding:0;overflow:hidden;
+  }
+  .cell.blank{border-color:transparent;background:transparent;}
+  .cell .n{
+    position:absolute;top:4px;left:5px;
+    font-family:'Space Mono',monospace;font-size:11px;color:var(--ink-2);
+  }
+  .cell.has .n{
+    color:var(--paper-2);text-shadow:0 1px 3px rgba(0,0,0,.7);
+  }
+  .cell.has{border-color:var(--teal);}
+  .cell .c{
+    position:absolute;bottom:4px;right:4px;
+    background:var(--ochre);color:var(--paper-2);
+    font-family:'Space Mono',monospace;font-size:10px;font-weight:700;
+    border-radius:999px;padding:1px 5px;
+  }
+  .cell.today{box-shadow:inset 0 0 0 2px var(--ochre);}
+
+  /* ---------- empty ---------- */
+  .empty{
+    position:absolute;inset:0;display:grid;place-content:center;
+    text-align:center;gap:6px;pointer-events:none;padding:24px;
+  }
+  .empty p{margin:0;font-size:15px;color:var(--ink-2);}
+  .empty .k{font-family:'Fraunces',serif;font-size:20px;color:var(--ink);}
+
+  /* ---------- overlays ---------- */
+  .scrim{
+    position:fixed;inset:0;background:rgba(27,42,38,.55);
+    display:none;place-items:center;z-index:1000;padding:20px;
+  }
+  .scrim.on{display:grid;}
+  .sheet{
+    background:var(--paper-2);border:1px solid var(--line);border-radius:8px;
+    box-shadow:0 20px 50px rgba(27,42,38,.3);
+    width:min(520px,100%);max-height:90vh;overflow-y:auto;padding:26px;
+  }
+  .sheet h2{font-family:'Fraunces',serif;font-weight:600;font-size:24px;margin:0 0 8px;}
+  .sheet p{margin:0 0 18px;color:var(--ink-2);font-size:14px;line-height:1.55;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .btn{
+    border:1px solid var(--teal);background:var(--teal);color:var(--paper-2);
+    border-radius:var(--r);padding:11px 18px;font-size:14px;font-weight:500;
+  }
+  .btn.ghost{background:transparent;color:var(--teal);}
+  .btn.quiet{border-color:var(--line);background:transparent;color:var(--ink-2);}
+  .btn.danger{border-color:var(--madder);background:transparent;color:var(--madder);}
+  label{display:block;font-size:12px;font-weight:600;margin:0 0 5px;letter-spacing:.02em;}
+  input[type=date],input[type=text]{
+    width:100%;padding:10px;border:1px solid var(--line);border-radius:var(--r);
+    background:var(--paper);font-family:'Space Mono',monospace;font-size:13px;color:var(--ink);
+  }
+  .field{margin-bottom:16px;}
+  .hint{font-size:11px;color:var(--ink-2);margin-top:5px;}
+
+  #qThumb{
+    width:100%;height:190px;object-fit:cover;border-radius:var(--r);
+    border:1px solid var(--line);margin-bottom:16px;background:var(--paper);
+  }
+  #qMap{height:190px;border:1px solid var(--line);border-radius:var(--r);}
+  #qProgress{float:right;}
+
+  /* ---------- detail ---------- */
+  #detail{background:rgba(27,42,38,.9);}
+  #detail .sheet{width:min(760px,100%);padding:18px;background:var(--paper-2);}
+  #dImg{width:100%;max-height:62vh;object-fit:contain;background:var(--ink);border-radius:var(--r);}
+  #dMeta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px;}
+  #dMeta .stamp{flex:1;min-width:160px;line-height:1.7;}
+
+  #strip{display:flex;gap:8px;overflow-x:auto;padding:4px 0 2px;margin-bottom:16px;}
+  #strip img{width:88px;height:88px;object-fit:cover;border-radius:var(--r);border:1px solid var(--line);cursor:pointer;flex:none;}
+  #strip img:hover{border-color:var(--teal);}
+
+  @media (max-width:520px){
+    h1{font-size:22px;}
+    .sheet{padding:20px;}
+    #calWrap{padding:12px 12px 96px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none!important;animation:none!important;}
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header>
+    <h1>Lilah</h1>
+    <span id="count" class="stamp"></span>
+    <button id="addBtn" title="Add photos" aria-label="Add photos">+</button>
+  </header>
+
+  <main>
+    <section id="mapView" class="view on">
+      <div id="map"></div>
+      <div class="empty" id="mapEmpty">
+        <span class="k">Nothing pinned yet</span>
+        <p>Add photos and the ones that know where they were taken will land here.</p>
+      </div>
+      <button id="noloc" class="stamp"></button>
+    </section>
+
+    <section id="calView" class="view">
+      <div id="calWrap">
+        <div class="calbar">
+          <h2 id="calTitle"></h2>
+          <button id="prevM" aria-label="Previous month">&larr;</button>
+          <button id="nextM" aria-label="Next month">&rarr;</button>
+        </div>
+        <div class="dow"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+        <div class="grid" id="calGrid"></div>
+      </div>
+    </section>
+
+    <nav id="switcher" role="tablist">
+      <button id="tabMap" role="tab" aria-selected="true">Map</button>
+      <button id="tabCal" role="tab" aria-selected="false">Calendar</button>
+    </nav>
+  </main>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" multiple hidden>
+
+<!-- welcome -->
+<div class="scrim" id="welcome">
+  <div class="sheet">
+    <h2>An album of places and days</h2>
+    <p>Add photos and they'll be pinned to where they were taken and stacked on the day they happened. Most photos already carry their date; some carry their location too. Anything missing, you can fill in as you go.</p>
+    <div class="row">
+      <button class="btn" id="wAdd">Add photos</button>
+      <button class="btn quiet" id="wSkip">Look around first</button>
+    </div>
+  </div>
+</div>
+
+<!-- fill-in-the-blanks queue -->
+<div class="scrim" id="queue">
+  <div class="sheet">
+    <span id="qProgress" class="stamp"></span>
+    <h2>Where and when</h2>
+    <p id="qNote"></p>
+    <img id="qThumb" alt="Photo being added">
+    <div class="field">
+      <label for="qDate">Date taken</label>
+      <input type="date" id="qDate">
+      <div class="hint" id="qDateHint"></div>
+    </div>
+    <div class="field">
+      <label for="qSearch">Location</label>
+      <input type="text" id="qSearch" placeholder="Search a place, or tap the map" autocomplete="off">
+      <div class="hint" id="qLocHint">No location set</div>
+    </div>
+    <div id="qMap"></div>
+    <div class="row" style="margin-top:18px">
+      <button class="btn" id="qSave">Add to album</button>
+      <button class="btn quiet" id="qSkip">Add without a location</button>
+    </div>
+  </div>
+</div>
+
+<!-- day strip -->
+<div class="scrim" id="day">
+  <div class="sheet">
+    <h2 id="dayTitle"></h2>
+    <p id="dayCount"></p>
+    <div id="strip"></div>
+    <button class="btn quiet" id="dayClose">Close</button>
+  </div>
+</div>
+
+<!-- single photo -->
+<div class="scrim" id="detail">
+  <div class="sheet">
+    <img id="dImg" alt="">
+    <div id="dMeta">
+      <span class="stamp" id="dStamp"></span>
+      <button class="btn ghost" id="dLocate">Show on map</button>
+      <button class="btn danger" id="dDelete">Remove</button>
+      <button class="btn quiet" id="dClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/exifr@7.1.3/dist/full.umd.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ===================== storage ===================== */
+const DB='lilah-album', STORE='photos';
+let db=null, mem=[];   // mem = fallback when IndexedDB is unavailable
+
+function openDB(){
+  return new Promise(res=>{
+    try{
+      const r=indexedDB.open(DB,1);
+      r.onupgradeneeded=e=>{
+        const d=e.target.result;
+        if(!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE,{keyPath:'id'});
+      };
+      r.onsuccess=e=>{db=e.target.result;res();};
+      r.onerror=()=>{db=null;res();};
+      r.onblocked=()=>{db=null;res();};
+    }catch(e){db=null;res();}
+  });
+}
+function put(rec){
+  if(!db){mem.push(rec);return Promise.resolve();}
+  return new Promise(res=>{
+    const t=db.transaction(STORE,'readwrite');
+    t.objectStore(STORE).put(rec);
+    t.oncomplete=res; t.onerror=()=>{mem.push(rec);res();};
+  });
+}
+function all(){
+  if(!db) return Promise.resolve(mem.slice());
+  return new Promise(res=>{
+    const t=db.transaction(STORE,'readonly');
+    const q=t.objectStore(STORE).getAll();
+    q.onsuccess=()=>res(q.result||[]);
+    q.onerror=()=>res(mem.slice());
+  });
+}
+function del(id){
+  if(!db){mem=mem.filter(p=>p.id!==id);return Promise.resolve();}
+  return new Promise(res=>{
+    const t=db.transaction(STORE,'readwrite');
+    t.objectStore(STORE).delete(id);
+    t.oncomplete=res; t.onerror=res;
+  });
+}
+
+/* ===================== state ===================== */
+let photos=[];                       // {id, blob, url, date:'YYYY-MM-DD', lat, lng, name}
+let cursor=new Date();               // calendar month
+let map=null, layer=null, qmap=null, qmarker=null;
+let queue=[], qi=0, qLat=null, qLng=null;
+let current=null;                    // photo open in detail
+
+const $=id=>document.getElementById(id);
+
+/* ===================== helpers ===================== */
+function iso(d){
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+function pretty(s){
+  const [y,m,d]=s.split('-').map(Number);
+  return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+}
+function coords(p){
+  if(p.lat==null) return 'location not set';
+  return p.lat.toFixed(4)+', '+p.lng.toFixed(4);
+}
+function hydrate(p){ if(!p.url) p.url=URL.createObjectURL(p.blob); return p; }
+
+function refreshCount(){
+  const n=photos.length;
+  const withLoc=photos.filter(p=>p.lat!=null).length;
+  $('count').textContent = n ? n+' photo'+(n===1?'':'s')+' · '+withLoc+' placed' : '';
+}
+
+/* ===================== map ===================== */
+function initMap(){
+  map=L.map('map',{zoomControl:true,worldCopyJump:true}).setView([20,0],2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:19, attribution:'&copy; OpenStreetMap'
+  }).addTo(map);
+  layer=L.layerGroup().addTo(map);
+}
+
+function drawMap(fit){
+  layer.clearLayers();
+  const placed=photos.filter(p=>p.lat!=null);
+  $('mapEmpty').style.display = placed.length ? 'none' : 'grid';
+
+  // group photos sharing (roughly) the same spot
+  const groups={};
+  placed.forEach(p=>{
+    const k=p.lat.toFixed(3)+'|'+p.lng.toFixed(3);
+    (groups[k]=groups[k]||[]).push(p);
+  });
+
+  const pts=[];
+  Object.values(groups).forEach(g=>{
+    const p=g[0];
+    pts.push([p.lat,p.lng]);
+    const badge = g.length>1 ? '<b>'+g.length+'</b>' : '';
+    const icon=L.divIcon({
+      className:'pin',
+      html:'<i style="background-image:url('+p.url+')"></i>'+badge,
+      iconSize:[46,46], iconAnchor:[23,23]
+    });
+    L.marker([p.lat,p.lng],{icon,keyboard:true,title:pretty(p.date)})
+      .addTo(layer)
+      .on('click',()=>{
+        if(g.length>1) openDay(p.date,g); else openDetail(p);
+      });
+  });
+
+  const missing=photos.length-placed.length;
+  const nb=$('noloc');
+  if(missing>0){
+    nb.style.display='block';
+    nb.textContent=missing+' photo'+(missing===1?'':'s')+' without a location';
+  } else nb.style.display='none';
+
+  if(fit && pts.length) map.fitBounds(L.latLngBounds(pts).pad(.3),{maxZoom:13});
+}
+
+/* ===================== calendar ===================== */
+function drawCal(){
+  const y=cursor.getFullYear(), m=cursor.getMonth();
+  $('calTitle').textContent=cursor.toLocaleDateString(undefined,{month:'long',year:'numeric'});
+
+  const byDay={};
+  photos.forEach(p=>{(byDay[p.date]=byDay[p.date]||[]).push(p);});
+
+  const first=new Date(y,m,1).getDay();
+  const days=new Date(y,m+1,0).getDate();
+  const today=iso(new Date());
+  const g=$('calGrid');
+  g.innerHTML='';
+
+  for(let i=0;i<first;i++){
+    const c=document.createElement('div');
+    c.className='cell blank';
+    g.appendChild(c);
+  }
+  for(let d=1;d<=days;d++){
+    const key=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const list=byDay[key];
+    const c=document.createElement('button');
+    c.className='cell'+(list?' has':'')+(key===today?' today':'');
+    c.innerHTML='<span class="n">'+d+'</span>'+(list&&list.length>1?'<span class="c">'+list.length+'</span>':'');
+    if(list){
+      c.style.backgroundImage='url('+list[0].url+')';
+      c.setAttribute('aria-label',list.length+' photos on '+pretty(key));
+      c.addEventListener('click',()=>openDay(key,list));
+    }else{
+      c.disabled=true;
+    }
+    g.appendChild(c);
+  }
+}
+
+/* ===================== views ===================== */
+function show(which){
+  const isMap=which==='map';
+  $('mapView').classList.toggle('on',isMap);
+  $('calView').classList.toggle('on',!isMap);
+  $('tabMap').setAttribute('aria-selected',isMap);
+  $('tabCal').setAttribute('aria-selected',!isMap);
+  if(isMap) setTimeout(()=>map.invalidateSize(),60); else drawCal();
+}
+
+/* ===================== ingest ===================== */
+async function ingest(files){
+  const pending=[];
+  for(const f of files){
+    if(!f.type.startsWith('image/')) continue;
+    let ex=null;
+    try{ ex=await exifr.parse(f,{gps:true}); }catch(e){ ex=null; }
+
+    const exifDate = ex && (ex.DateTimeOriginal||ex.CreateDate||ex.ModifyDate);
+    const lat = ex && typeof ex.latitude==='number' ? ex.latitude : null;
+    const lng = ex && typeof ex.longitude==='number' ? ex.longitude : null;
+
+    const rec={
+      id: (crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random()),
+      blob:f,
+      name:f.name,
+      date: iso(exifDate?new Date(exifDate):new Date(f.lastModified)),
+      dateFromExif: !!exifDate,
+      lat, lng
+    };
+    hydrate(rec);
+
+    if(exifDate && lat!=null){        // fully known — file it straight away
+      await put(strip(rec)); photos.push(rec);
+    }else{
+      pending.push(rec);
+    }
+  }
+  photos.sort((a,b)=>a.date.localeCompare(b.date));
+  refreshCount(); drawMap(true); drawCal();
+
+  if(pending.length){ queue=pending; qi=0; showQ(); }
+}
+function strip(p){ return {id:p.id,blob:p.blob,name:p.name,date:p.date,lat:p.lat,lng:p.lng}; }
+
+/* ===================== queue modal ===================== */
+function showQ(){
+  const p=queue[qi];
+  if(!p){ $('queue').classList.remove('on'); return; }
+  $('queue').classList.add('on');
+  $('qProgress').textContent=(qi+1)+' / '+queue.length;
+  $('qThumb').src=p.url;
+  $('qDate').value=p.date;
+  $('qDateHint').textContent = p.dateFromExif
+    ? 'Read from the photo.'
+    : 'This photo had no date of its own, so this is the file date. Change it if you know better.';
+  $('qNote').textContent = p.name;
+  $('qSearch').value='';
+  qLat=p.lat; qLng=p.lng;
+  setLocHint();
+
+  if(!qmap){
+    qmap=L.map('qMap',{zoomControl:true}).setView([20,0],2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(qmap);
+    qmap.on('click',e=>setQPin(e.latlng.lat,e.latlng.lng,false));
+  }
+  setTimeout(()=>{
+    qmap.invalidateSize();
+    if(qLat!=null) setQPin(qLat,qLng,true); else qmap.setView([20,0],2);
+  },80);
+}
+function setQPin(lat,lng,center){
+  qLat=lat; qLng=lng;
+  if(qmarker) qmarker.setLatLng([lat,lng]);
+  else qmarker=L.marker([lat,lng]).addTo(qmap);
+  if(center) qmap.setView([lat,lng],12);
+  setLocHint();
+}
+function setLocHint(){
+  $('qLocHint').textContent = qLat==null ? 'No location set' : qLat.toFixed(4)+', '+qLng.toFixed(4);
+}
+async function geocode(q){
+  if(!q.trim()) return;
+  $('qLocHint').textContent='Searching…';
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q));
+    const j=await r.json();
+    if(j&&j[0]) setQPin(parseFloat(j[0].lat),parseFloat(j[0].lon),true);
+    else $('qLocHint').textContent='No match. Try another name, or tap the map.';
+  }catch(e){
+    $('qLocHint').textContent='Search is unavailable right now. Tap the map instead.';
+  }
+}
+async function commitQ(withLoc){
+  const p=queue[qi];
+  p.date=$('qDate').value||p.date;
+  if(withLoc && qLat!=null){ p.lat=qLat; p.lng=qLng; } else { p.lat=null; p.lng=null; }
+  await put(strip(p));
+  photos.push(p);
+  photos.sort((a,b)=>a.date.localeCompare(b.date));
+  refreshCount();
+  if(qmarker){ qmap.removeLayer(qmarker); qmarker=null; }
+  qi++;
+  if(qi<queue.length) showQ();
+  else{
+    $('queue').classList.remove('on');
+    queue=[];
+    drawMap(true); drawCal();
+  }
+}
+
+/* ===================== day + detail ===================== */
+function openDay(dateKey,list){
+  $('dayTitle').textContent=pretty(dateKey);
+  $('dayCount').textContent=list.length+' photo'+(list.length===1?'':'s');
+  const s=$('strip'); s.innerHTML='';
+  list.forEach(p=>{
+    const im=document.createElement('img');
+    im.src=p.url; im.alt=''; im.tabIndex=0;
+    im.addEventListener('click',()=>{$('day').classList.remove('on');openDetail(p);});
+    s.appendChild(im);
+  });
+  $('day').classList.add('on');
+}
+function openDetail(p){
+  current=p;
+  $('dImg').src=p.url;
+  $('dStamp').innerHTML=pretty(p.date)+'<br>'+coords(p);
+  $('dLocate').style.display = p.lat==null ? 'none' : '';
+  $('detail').classList.add('on');
+}
+
+/* ===================== wiring ===================== */
+$('addBtn').addEventListener('click',()=>$('fileInput').click());
+$('wAdd').addEventListener('click',()=>{$('welcome').classList.remove('on');$('fileInput').click();});
+$('wSkip').addEventListener('click',()=>$('welcome').classList.remove('on'));
+$('fileInput').addEventListener('change',e=>{
+  const f=Array.from(e.target.files||[]);
+  e.target.value='';
+  if(f.length) ingest(f);
+});
+
+$('tabMap').addEventListener('click',()=>show('map'));
+$('tabCal').addEventListener('click',()=>show('cal'));
+
+$('prevM').addEventListener('click',()=>{cursor.setMonth(cursor.getMonth()-1);drawCal();});
+$('nextM').addEventListener('click',()=>{cursor.setMonth(cursor.getMonth()+1);drawCal();});
+
+$('qSave').addEventListener('click',()=>commitQ(true));
+$('qSkip').addEventListener('click',()=>commitQ(false));
+$('qSearch').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();geocode(e.target.value);}
+});
+
+$('dayClose').addEventListener('click',()=>$('day').classList.remove('on'));
+$('dClose').addEventListener('click',()=>$('detail').classList.remove('on'));
+$('dLocate').addEventListener('click',()=>{
+  $('detail').classList.remove('on');
+  show('map');
+  setTimeout(()=>map.setView([current.lat,current.lng],14),120);
+});
+$('dDelete').addEventListener('click',async()=>{
+  if(!current) return;
+  await del(current.id);
+  photos=photos.filter(p=>p.id!==current.id);
+  $('detail').classList.remove('on');
+  refreshCount(); drawMap(false); drawCal();
+});
+$('noloc').addEventListener('click',()=>{
+  const list=photos.filter(p=>p.lat==null);
+  if(list.length) openDay(list[0].date,list);
+});
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    ['detail','day','welcome'].forEach(id=>$(id).classList.remove('on'));
+  }
+});
+document.querySelectorAll('.scrim').forEach(s=>{
+  s.addEventListener('click',e=>{
+    if(e.target===s && s.id!=='queue') s.classList.remove('on');
+  });
+});
+
+/* ===================== boot ===================== */
+(async function(){
+  initMap();
+  await openDB();
+  const saved=await all();
+  photos=saved.map(hydrate).sort((a,b)=>a.date.localeCompare(b.date));
+  refreshCount();
+  drawMap(true);
+  if(photos.length) cursor=new Date(photos[photos.length-1].date+'T12:00:00');
+  drawCal();
+  if(!photos.length) $('welcome').classList.add('on');
+})();
+
+})();
+</script>
+</body>
+</html>
