@@ -190,24 +190,6 @@
 
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
 
-<!-- sign in -->
-<div class="scrim" id="signin">
-  <div class="sheet">
-    <h2>Lilah</h2>
-    <p>An album of places and days. Sign in to see it.</p>
-    <div class="field">
-      <label for="siEmail">Email</label>
-      <input type="email" id="siEmail" autocomplete="username">
-    </div>
-    <div class="field">
-      <label for="siPass">Password</label>
-      <input type="password" id="siPass" autocomplete="current-password">
-    </div>
-    <div class="row"><button class="btn" id="siGo">Sign in</button></div>
-    <div class="err" id="siErr"></div>
-  </div>
-</div>
-
 <!-- welcome -->
 <div class="scrim" id="welcome">
   <div class="sheet">
@@ -591,32 +573,15 @@ Array.prototype.forEach.call(document.querySelectorAll('.scrim'),function(s){
   });
 });
 
-/* ---------- sign in ---------- */
-async function signIn(){
-  const email=$('siEmail').value.trim(), pass=$('siPass').value;
-  $('siErr').textContent='';
-  if(!email||!pass){ $('siErr').textContent='Enter your email and password.'; return; }
-  $('siGo').disabled=true;
-  const r=await sb.auth.signInWithPassword({email:email,password:pass});
-  $('siGo').disabled=false;
-  if(r.error){ $('siErr').textContent='That email and password don\u2019t match an account.'; return; }
-  $('siPass').value='';
-  $('signin').classList.remove('on');
-  await start();
-}
-$('siGo').addEventListener('click',signIn);
-$('siPass').addEventListener('keydown',function(e){ if(e.key==='Enter') signIn(); });
 
 /* ---------- boot ---------- */
 async function start(){
-  const u=await sb.auth.getUser();
-  me = (u.data && u.data.user) ? u.data.user.email : null;
+  me = null;
   await load(true);
   if(photos.length) cursor=new Date(photos[photos.length-1].date+'T12:00:00');
   drawCal();
   if(!photos.length) $('welcome').classList.add('on');
 
-  // live updates when the other person adds or removes something
   sb.channel('album')
     .on('postgres_changes',{event:'*',schema:'public',table:'photos'},function(){ load(false); })
     .subscribe();
@@ -624,9 +589,7 @@ async function start(){
 
 (async function(){
   initMap();
-  const s=await sb.auth.getSession();
-  if(s.data && s.data.session) await start();
-  else $('signin').classList.add('on');
+  await start();
 })();
 
 })();
