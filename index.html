@@ -390,7 +390,7 @@ function show(which){
 /* ---------- load from Supabase ---------- */
 async function load(fit){
   const r = await sb.from('photos').select('*').order('taken_on');
-  if(r.error){ busy(true,'Could not load the album',0); setTimeout(function(){busy(false);},3000); return; }
+  if(r.error){ console.error('LOAD:',r.error); busy(true,r.error.message,0); setTimeout(function(){busy(false);},6000); return; }
   photos = r.data.map(function(x){
     return {id:x.id,path:x.path,url:publicUrl(x.path),date:x.taken_on,
             lat:x.lat,lng:x.lng,added_by:x.added_by};
