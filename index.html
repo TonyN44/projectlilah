@@ -61,6 +61,13 @@
   .pin b{position:absolute;top:-6px;right:-6px;background:var(--ochre);color:var(--paper-2);
          font-family:'Space Mono',monospace;font-size:10px;font-weight:700;border-radius:999px;
          padding:1px 5px;border:1.5px solid var(--paper-2);}
+  .home{background:none;border:0;}
+  .home svg{display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.55));}
+  .leaflet-tooltip.homelabel{
+    background:var(--paper-2);border:1px solid var(--line);border-radius:999px;
+    padding:2px 9px;font-family:'Space Mono',monospace;font-size:10px;
+    color:var(--ink);box-shadow:var(--shadow);white-space:nowrap;}
+  .leaflet-tooltip.homelabel:before{display:none!important;}
   .leaflet-container{font-family:'Archivo',sans-serif;}
 
   #noloc{position:absolute;left:18px;bottom:max(18px,env(safe-area-inset-bottom));z-index:600;
@@ -266,6 +273,11 @@ const SUPABASE_ANON = 'sb_publishable_vfwnaisbYggOucaWezhZwA_d4BenWmk';
 const BUCKET   = 'album';
 const MAX_EDGE = 1600;   // photos are resized to this before upload
 const QUALITY  = 0.85;
+const PLACES = [
+  {name:'Arlington',   lat:38.9050, lng:-77.1350, kind:'house'},
+  {name:'Gurnee',      lat:42.3800, lng:-87.9300, kind:'house'},
+  {name:'Notre Dame',  lat:41.7031, lng:-86.2385, kind:'dome'}
+];
 /* ========================================================== */
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -273,7 +285,7 @@ const $ = id=>document.getElementById(id);
 
 let photos=[];            // {id, path, url, date, lat, lng, added_by}
 let cursor=new Date();
-let map=null, layer=null, qmap=null, qmarker=null;
+let map=null, layer=null, placeLayer=null, qmap=null, qmarker=null;
 let queue=[], qi=0, qLat=null, qLng=null;
 let current=null, me=null;
 
@@ -317,10 +329,48 @@ function downscale(file){
 /* ---------- map ---------- */
 function initMap(){
   map=L.map('map',{zoomControl:true,worldCopyJump:true}).setView([20,0],2);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+// satellite imagery
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {maxZoom:19,attribution:'Imagery &copy; Esri'}).addTo(map);
+  // roads
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+    {maxZoom:19,opacity:.9}).addTo(map);
+  // state lines and place names
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    {maxZoom:19}).addTo(map);
+
+  placeLayer=L.layerGroup().addTo(map);
   layer=L.layerGroup().addTo(map);
+  drawPlaces();
 }
+const HOUSE_SVG='<svg width="36" height="44" viewBox="0 0 36 44" xmlns="http://www.w3.org/2000/svg">'
+  +'<path d="M18 43C18 43 3 26 3 17A15 15 0 1 1 33 17C33 26 18 43 18 43Z" fill="#14605D" stroke="#F5F5EF" stroke-width="2.5"/>'
+  +'<path d="M18 8L28 17.5L25 17.5L25 26L11 26L11 17.5L8 17.5Z" fill="#F5F5EF"/>'
+  +'<rect x="15.5" y="20" width="5" height="6" fill="#14605D"/></svg>';
+
+const DOME_SVG='<svg width="36" height="46" viewBox="0 0 36 46" xmlns="http://www.w3.org/2000/svg">'
+  +'<path d="M18 45C18 45 4 28 4 18A14 14 0 1 1 32 18C32 28 18 45 18 45Z" fill="#1B2A26" stroke="#F5F5EF" stroke-width="2.5"/>'
+  +'<path d="M10 24L10 22A8 8 0 0 1 26 22L26 24Z" fill="#E0AC28"/>'
+  +'<rect x="9" y="24" width="18" height="3" rx="1" fill="#E0AC28"/>'
+  +'<rect x="17.2" y="9" width="1.6" height="6" fill="#E0AC28"/>'
+  +'<circle cx="18" cy="7.5" r="2.2" fill="#E0AC28"/></svg>';
+
+function drawPlaces(){
+  placeLayer.clearLayers();
+  PLACES.forEach(function(p){
+    const dome = p.kind==='dome';
+    const icon = L.divIcon({
+      className:'home',
+      html: dome?DOME_SVG:HOUSE_SVG,
+      iconSize:[36, dome?46:44],
+      iconAnchor:[18, dome?45:43]
+    });
+    L.marker([p.lat,p.lng],{icon:icon,title:p.name,interactive:true})
+      .addTo(placeLayer)
+      .bindTooltip(p.name,{permanent:true,direction:'bottom',offset:[0,2],className:'homelabel'});
+  });
+}
+  
 function drawMap(fit){
   layer.clearLayers();
   const placed=photos.filter(p=>p.lat!=null);
@@ -349,7 +399,11 @@ function drawMap(fit){
     nb.textContent=missing+' photo'+(missing===1?'':'s')+' without a location';
   } else nb.style.display='none';
 
-  if(fit&&pts.length) map.fitBounds(L.latLngBounds(pts).pad(.3),{maxZoom:13});
+  if(fit){
+    let b=pts.slice();
+    if(!b.length) PLACES.forEach(function(p){ b.push([p.lat,p.lng]); });
+    if(b.length) map.fitBounds(L.latLngBounds(b).pad(.3),{maxZoom:13});
+  }
 }
 
 /* ---------- calendar ---------- */
