@@ -223,6 +223,7 @@
   #qThumb{width:100%;height:190px;object-fit:cover;border-radius:var(--r);
           border:1px solid var(--line);margin-bottom:16px;background:var(--paper);}
   #qMap{height:190px;border:1px solid var(--line);border-radius:var(--r);}
+  #eMap{height:220px;border:1px solid var(--line);border-radius:var(--r);}
   #qProgress{float:right;}
 
   #detail{background:rgba(27,42,38,.9);}
@@ -350,12 +351,38 @@
     <div id="dMeta">
       <span class="stamp" id="dStamp"></span>
       <button class="btn ghost" id="dLocate">Show on map</button>
+      <button class="btn ghost" id="dEdit">Edit</button>
       <button class="btn danger" id="dDelete">Remove</button>
       <button class="btn quiet" id="dClose">Close</button>
     </div>
   </div>
 </div>
 
+<!-- edit a photo -->
+<div class="scrim" id="edit">
+  <div class="sheet">
+    <h2>Edit this photo</h2>
+    <p id="eNote"></p>
+    <div class="field">
+      <label for="eDate">Date taken</label>
+      <input type="date" id="eDate">
+    </div>
+    <div class="field">
+      <label for="eSearch">Location</label>
+      <input type="text" id="eSearch" placeholder="Search a place, or tap the map" autocomplete="off">
+      <div class="hint" id="eLocHint">No location set</div>
+    </div>
+    <div id="eMap"></div>
+    <div class="row" style="margin-top:18px">
+      <button class="btn" id="eSave">Save</button>
+      <button class="btn quiet" id="eClear">Clear location</button>
+      <button class="btn quiet" id="eCancel">Cancel</button>
+    </div>
+    <div class="err" id="eErr"></div>
+  </div>
+</div>
+
+  
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/exifr@7.1.3/dist/full.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -398,6 +425,7 @@ let photos=[];            // {id, path, url, date, lat, lng, added_by}
 let map=null, layer=null, placeLayer=null, qmap=null, qmarker=null;
 let queue=[], qi=0, qLat=null, qLng=null;
 let current=null, me=null;
+let emap=null, emarker=null, eLat=null, eLng=null, editing=null;
 let zoom=3, calBuilt=false, scrollTarget=null;
 
 /* ---------- helpers ---------- */
@@ -834,13 +862,13 @@ async function commitQ(withLoc){
 }
 
 /* ---------- day + detail ---------- */
-function openDay(dateKey,list,ms){
+function openDay(dateKey,list,ms,title){
   list=list||[];
-  if(!ms){
+  if(!ms && dateKey && !title){
     const a=dateKey.split('-').map(Number);
     ms=milestoneFor(a[0],a[1],a[2]);
   }
-  $('dayTitle').textContent=pretty(dateKey);
+  $('dayTitle').textContent = title || pretty(dateKey);
   const chip=$('dayMile');
   if(ms){
     chip.classList.remove('hide');
@@ -870,7 +898,64 @@ function openDetail(p){
   $('dLocate').style.display=p.lat==null?'none':'';
   $('detail').classList.add('on');
 }
+/* ---------- edit a photo ---------- */
+function setELoc(){
+  $('eLocHint').textContent = eLat==null ? 'No location set' : eLat.toFixed(5)+', '+eLng.toFixed(5);
+}
+function setEPin(lat,lng,center){
+  eLat=lat; eLng=lng;
+  if(emarker) emarker.setLatLng([lat,lng]); else emarker=L.marker([lat,lng],{draggable:true}).addTo(emap);
+  emarker.off('dragend').on('dragend',function(ev){
+    const ll=ev.target.getLatLng(); eLat=ll.lat; eLng=ll.lng; setELoc();
+  });
+  if(center) emap.setView([lat,lng],14);
+  setELoc();
+}
+async function egeocode(q){
+  if(!q.trim()) return;
+  $('eLocHint').textContent='Searching\u2026';
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q));
+    const j=await r.json();
+    if(j&&j[0]) setEPin(parseFloat(j[0].lat),parseFloat(j[0].lon),true);
+    else $('eLocHint').textContent='No match. Try another name, or tap the map.';
+  }catch(e){ $('eLocHint').textContent='Search is unavailable right now. Tap the map instead.'; }
+}
+function openEdit(p){
+  editing=p;
+  $('eErr').textContent='';
+  $('eNote').textContent = p.lat==null
+    ? 'This one has no location yet. Tap the map, drag the pin, or search a place.'
+    : 'Drag the pin or search a place to correct it.';
+  $('eDate').value=p.date;
+  $('eSearch').value='';
+  eLat=p.lat; eLng=p.lng; setELoc();
+  $('edit').classList.add('on');
 
+  if(!emap){
+    emap=L.map('eMap',{zoomControl:true}).setView([20,0],2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(emap);
+    emap.on('click',function(e){ setEPin(e.latlng.lat,e.latlng.lng,false); });
+  }
+  setTimeout(function(){
+    emap.invalidateSize();
+    if(emarker){ emap.removeLayer(emarker); emarker=null; }
+    if(eLat!=null) setEPin(eLat,eLng,true);
+    else emap.setView([PLACES[0].lat,PLACES[0].lng],9);
+  },80);
+}
+async function saveEdit(){
+  if(!editing) return;
+  const d=$('eDate').value||editing.date;
+  $('eSave').disabled=true;
+  const r=await sb.from('photos').update({taken_on:d, lat:eLat, lng:eLng}).eq('id',editing.id);
+  $('eSave').disabled=false;
+  if(r.error){ console.error('EDIT:',r.error); $('eErr').textContent=r.error.message; return; }
+  $('edit').classList.remove('on');
+  editing=null;
+  await load(true);
+}
 /* ---------- wiring ---------- */
 $('addBtn').addEventListener('click',function(){ $('fileInput').click(); });
 $('wAdd').addEventListener('click',function(){ $('welcome').classList.remove('on'); $('fileInput').click(); });
@@ -905,6 +990,22 @@ $('dLocate').addEventListener('click',function(){
   $('detail').classList.remove('on'); show('map');
   setTimeout(function(){ map.setView([current.lat,current.lng],14); },120);
 });
+$('dEdit').addEventListener('click',function(){
+  if(!current) return;
+  const p=current;
+  $('detail').classList.remove('on');
+  openEdit(p);
+});
+$('eSave').addEventListener('click',saveEdit);
+$('eCancel').addEventListener('click',function(){ $('edit').classList.remove('on'); editing=null; });
+$('eClear').addEventListener('click',function(){
+  eLat=null; eLng=null;
+  if(emarker){ emap.removeLayer(emarker); emarker=null; }
+  setELoc();
+});
+$('eSearch').addEventListener('keydown',function(e){
+  if(e.key==='Enter'){ e.preventDefault(); egeocode(e.target.value); }
+});
 $('dDelete').addEventListener('click',async function(){
   if(!current) return;
   const p=current;
@@ -917,10 +1018,10 @@ $('dDelete').addEventListener('click',async function(){
 });
 $('noloc').addEventListener('click',function(){
   const list=photos.filter(function(p){return p.lat==null;});
-  if(list.length) openDay(list[0].date,list);
+  if(list.length) openDay(null,list,null,'Waiting for a place');
 });
 document.addEventListener('keydown',function(e){
-  if(e.key==='Escape') ['detail','day','welcome'].forEach(function(id){ $(id).classList.remove('on'); });
+  if(e.key==='Escape') ['detail','day','welcome','edit'].forEach(function(id){ $(id).classList.remove('on'); });
 });
 Array.prototype.forEach.call(document.querySelectorAll('.scrim'),function(s){
   s.addEventListener('click',function(e){
